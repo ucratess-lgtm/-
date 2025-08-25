@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>SEXYHOTGIRL 방명록</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://fonts.googleapis.com/css2?family=Single+Day&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --pink:#ff66b2; --pink-2:#ff99cc; --pink-3:#ffd6ea; --white:#fff;
+      --card-bg: rgba(255,255,255,.65);
+    }
+    * { box-sizing:border-box }
+    body{
+      margin:0; font-family:'Single Day', cursive; color:#444;
+      background: linear-gradient(135deg,#ffe6f0,#ffd6ea,#ffe0f5);
+      min-height:100dvh; display:flex; flex-direction:column; align-items:center;
+    }
+    header{ width:100%; text-align:center; padding:28px 16px }
+    header h1{
+      margin:0; font-size:40px;
+      background:linear-gradient(90deg,var(--pink),#ffccff,var(--pink));
+      background-size:300% auto; -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+      animation:shine 3s linear infinite;
+      text-shadow: 0 0 0 rgba(0,0,0,0);
+    }
+    header p{ margin:6px 0 0; color:#7a4b63 }
+    @keyframes shine{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+
+    .wrap{ width: min(920px, 92vw); margin: 0 auto 40px; }
+    .card{
+      background:var(--card-bg); backdrop-filter: blur(8px);
+      border:2px dashed #ffb6d2; border-radius:18px; box-shadow:0 8px 24px rgba(255,105,180,.25);
+      padding:18px; margin-bottom:18px;
+    }
+
+    form .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+    input, textarea{
+      flex:1; width:100%; padding:12px 14px; font-size:18px; border:2px solid #ffb6d2; border-radius:12px; background:#fff;
+    }
+    textarea{ min-height:90px; resize:vertical }
+    button{
+      padding:12px 20px; font-size:18px; border:none; border-radius:999px; cursor:pointer; color:#fff;
+      background: linear-gradient(90deg, var(--pink), var(--pink-2), var(--pink));
+      background-size:200% auto; animation:shine 4s linear infinite;
+      box-shadow: 0 8px 18px rgba(255,105,180,.35);
+    }
+    button:hover{ transform: translateY(-1px) }
+
+    #guestbook{ display:flex; flex-direction:column; gap:12px; }
+    .entry{
+      background:#ffeaf4; border:1px solid #ffd1e5; border-radius:14px; padding:14px 16px;
+      box-shadow: 0 6px 12px rgba(255,182,193,.35);
+    }
+    .entry-head{ display:flex; gap:8px; align-items:baseline; justify-content:space-between }
+    .name{ color:#d81b60; font-weight:bold; font-size:20px }
+    .time{ color:#8b6b7c; font-size:14px }
+    .msg{ white-space:pre-wrap; color:#5a4150; font-size:18px; margin-top:6px }
+
+    .hint{ color:#8b6b7c; font-size:14px; margin-top:6px }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>💖 섹시핫걸 방명록 💖</h1>
+    <p>예쁘게 말하면 더 예쁘게 남아 ✨</p>
+  </header>
+
+  <div class="wrap">
+    <div class="card">
+      <form id="guestForm" autocomplete="off">
+        <div class="row" style="margin-bottom:10px">
+          <input id="name" type="text" maxlength="20" placeholder="닉네임 (최대 20자)" required />
+        </div>
+        <div class="row" style="margin-bottom:10px">
+          <textarea id="message" maxlength="300" placeholder="메시지를 남겨주세요! (최대 300자)" required></textarea>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <span class="hint">저장 후 최신 글이 위로 올라와요.</span>
+          <button type="submit">남기기</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="guestbook" class="card"></div>
+  </div>
+
+  <!-- Firebase SDK (compat 버전: 쉬운 초기화) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <script>
+    // ✅ 네 프로젝트 값 그대로 복붙
+    const firebaseConfig = {
+      apiKey: "AIzaSyA3UTrYOJwxZQOY0_B3ceenI98yWvWCiow",
+      authDomain: "sexyhotgirl-guestbook.firebaseapp.com",
+      databaseURL: "https://sexyhotgirl-guestbook-default-rtdb.firebaseio.com",
+      projectId: "sexyhotgirl-guestbook",
+      storageBucket: "sexyhotgirl-guestbook.firebasestorage.app",
+      messagingSenderId: "913772256085",
+      appId: "1:913772256085:web:f31c554f0749a96decaddc"
+    };
+
+    // 초기화
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const form = document.getElementById('guestForm');
+    const list = document.getElementById('guestbook');
+
+    // 방명록 불러오기 (최신 100개, 위로 쌓이게)
+    const ref = db.ref('guestbook').orderByChild('ts').limitToLast(100);
+    ref.on('child_added', snap => {
+      const d = snap.val();
+      addEntry(d.name, d.message, d.ts);
+    });
+
+    // 새 글 저장
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const name = document.getElementById('name').value.trim();
+      const message = document.getElementById('message').value.trim();
+      if(!name || !message) return;
+
+      if(name.length > 20 || message.length > 300) return;
+
+      db.ref('guestbook').push({
+        name,
+        message,
+        ts: Date.now()
+      }).then(() => {
+        form.reset();
+      }).catch(err => {
+        alert('저장 중 오류 발생 😭\n' + err.message);
+      });
+    });
+
+    // DOM 추가
+    function addEntry(name, message, ts){
+      const box = document.createElement('div');
+      box.className = 'entry';
+
+      const head = document.createElement('div');
+      head.className = 'entry-head';
+
+      const n = document.createElement('div');
+      n.className = 'name';
+      n.textContent = name;
+
+      const t = document.createElement('div');
+      t.className = 'time';
+      t.textContent = new Date(ts).toLocaleString();
+
+      const m = document.createElement('div');
+      m.className = 'msg';
+      m.textContent = message;
+
+      head.appendChild(n); head.appendChild(t);
+      box.appendChild(head); box.appendChild(m);
+
+      list.prepend(box);
+    }
+  </script>
+</body>
+</html>
